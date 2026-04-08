@@ -33,9 +33,14 @@
     .btn-muted:hover{background:#e2ebff}
     .row{display:flex;gap:8px;align-items:end}
     .status{font-size:13px;color:var(--muted)}
-    .loading{position:fixed;inset:0;background:rgba(10,20,40,.32);display:none;align-items:center;justify-content:center;z-index:50}
-    .loading .box{background:#fff;border:1px solid var(--line);padding:14px 18px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);font-weight:600}
+    .status.busy{color:#1f57cf;font-weight:600}
+    .status.error{color:#b3261e;font-weight:600}
     .spin{display:inline-block;width:14px;height:14px;border:2px solid #b9cdfa;border-top-color:#2b62ff;border-radius:50%;animation:rot .9s linear infinite;margin-right:8px;vertical-align:-2px}
+    .inline-spin{display:inline-block;width:12px;height:12px;border:2px solid #b9cdfa;border-top-color:#2b62ff;border-radius:50%;animation:rot .9s linear infinite;margin-right:6px;vertical-align:-1px}
+    .hint{border:1px dashed #cfe0ff;background:#f7faff;border-radius:10px;padding:10px;color:#304266;font-size:12px;margin-top:10px}
+    .diag{margin-top:10px;background:#f8faff;border:1px solid var(--line);border-radius:10px;padding:10px}
+    .diag pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:11px;color:#425071}
+    .chips{display:flex;flex-wrap:wrap;gap:6px}
     @keyframes rot{to{transform:rotate(360deg)}}
     table{width:100%;border-collapse:collapse}
     th,td{padding:10px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top;text-align:left}
@@ -98,18 +103,28 @@
     </div>
 
     <div class="card">
-      <table>
+      <div class="small">Applied filters</div>
+      <div id="filterSummary" class="chips" style="margin-top:6px"></div>
+      <div id="noResultsHint" class="hint" style="display:none"></div>
+      <div id="diagnostics" class="diag" style="display:none">
+        <div class="small" style="margin-bottom:6px">Backend diagnostics</div>
+        <pre id="diagnosticsText"></pre>
+      </div>
+      <table style="margin-top:10px">
         <thead><tr><th>Time</th><th>Camera</th><th>Type</th><th>Score</th><th>Preview</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
       <div class="small" id="foot"></div>
     </div>
   </div>
-<div id="loading" class="loading"><div class="box"><span class="spin"></span><span id="loadingText">Loading...</span></div></div>
 
 <script>
 const typeOptions = ['motion','ring','smartDetectZone','person','vehicle','animal','package'];
 const typesDiv = document.getElementById('types');
+const loadCameras = document.getElementById('loadCameras');
+const search = document.getElementById('search');
+const save = document.getElementById('save');
+const status = document.getElementById('status');
 let lastEvents = [];
 let lastCameraMap = {};
 
@@ -124,14 +139,28 @@ typeOptions.filter(t=>['person','vehicle','animal','package'].includes(t)).forEa
   const e=document.getElementById('t_'+t); if(e) e.checked=true;
 });
 
-function setLoading(on, text='Loading...'){
-  const l = document.getElementById('loading');
-  const t = document.getElementById('loadingText');
-  t.textContent = text;
-  l.style.display = on ? 'flex' : 'none';
-  loadCameras.disabled = on;
-  search.disabled = on;
-  save.disabled = on;
+const buttonDefaults = new Map();
+let busyAction = null;
+
+function setStatus(message, tone='normal'){
+  status.textContent = message;
+  status.classList.remove('busy','error');
+  if(tone === 'busy') status.classList.add('busy');
+  if(tone === 'error') status.classList.add('error');
+}
+
+function setBusy(actionButton, on, text='Working...'){
+  if(!buttonDefaults.has(actionButton)) buttonDefaults.set(actionButton, actionButton.textContent);
+  if(on){
+    busyAction = actionButton;
+    actionButton.disabled = true;
+    actionButton.innerHTML = `<span class="inline-spin"></span>${text}`;
+    setStatus(text, 'busy');
+  } else {
+    actionButton.disabled = false;
+    actionButton.textContent = buttonDefaults.get(actionButton);
+    if(busyAction === actionButton) busyAction = null;
+  }
 }
 
 function toLocalInputValue(date){
@@ -173,11 +202,50 @@ function fmtTime(v){
   return new Intl.DateTimeFormat('en-GB',{dateStyle:'short',timeStyle:'medium',timeZone:tz}).format(d) + ` (${tz})`;
 }
 
+function summarizeFilters(){
+  const cameraSel = [...document.getElementById('camera').selectedOptions];
+  const eventTypes = typeOptions.filter(t => document.getElementById('t_'+t).checked);
+  const chips = [
+    `From: ${document.getElementById('from').value || '-'}`,
+    `To: ${document.getElementById('to').value || '-'}`,
+    `TZ: ${document.getElementById('timezone').value || 'UTC'}`,
+    `Limit: ${document.getElementById('limit').value || 100}`,
+    `Cameras: ${cameraSel.length ? cameraSel.map(c=>c.textContent).join(', ') : 'All cameras'}`,
+    `Types: ${eventTypes.length ? eventTypes.join(', ') : 'Any'}`
+  ];
+  const filterSummary = document.getElementById('filterSummary');
+  filterSummary.innerHTML = chips.map(c=>`<span class="pill">${c}</span>`).join('');
+}
+
+function renderNoResultsHint(diag){
+  const hint = document.getElementById('noResultsHint');
+  const tips = [
+    'Try widening the time window (last 24h is a good baseline).',
+    'Clear camera selection to search all cameras.',
+    'Enable broader event types (motion/ring + smart detect types).',
+    'Lower strict filters and search with a higher Max Events value.'
+  ];
+  const backendHint = diag?.hint || diag?.message || '';
+  hint.innerHTML = `<strong>No detections matched current filters.</strong><br>${backendHint ? `${backendHint}<br><br>` : ''}<span class="small">Quick checks:</span><ul style="margin:6px 0 0 16px;padding:0">${tips.map(t=>`<li>${t}</li>`).join('')}</ul>`;
+  hint.style.display = 'block';
+}
+
+function renderDiagnostics(diag){
+  const box = document.getElementById('diagnostics');
+  const txt = document.getElementById('diagnosticsText');
+  if(!diag || (typeof diag === 'object' && !Object.keys(diag).length)){
+    box.style.display = 'none';
+    txt.textContent = '';
+    return;
+  }
+  txt.textContent = typeof diag === 'string' ? diag : JSON.stringify(diag, null, 2);
+  box.style.display = 'block';
+}
+
 loadCameras.onclick = async () => {
   try {
-    setLoading(true, 'Connecting to NVR...');
-    status.textContent = 'Connecting to NVR...';
-    const { cameras } = await post('/api/cameras', creds());
+    setBusy(loadCameras, true, 'Connecting...');
+    const { cameras, diagnostics } = await post('/api/cameras', creds());
     const sel = document.getElementById('camera');
     sel.innerHTML='';
     cameras.forEach(c=>{
@@ -185,17 +253,21 @@ loadCameras.onclick = async () => {
       o.value=c.id; o.textContent=`${c.name} (${c.model||'camera'})`;
       sel.appendChild(o);
     });
-    status.textContent = `Loaded ${cameras.length} cameras.`;
-  } catch(e){ status.textContent = e.message; }
-  finally { setLoading(false); }
+    summarizeFilters();
+    renderDiagnostics(diagnostics);
+    setStatus(`Connected. Loaded ${cameras.length} cameras.`);
+  } catch(e){ setStatus(e.message, 'error'); }
+  finally { setBusy(loadCameras, false); }
 };
 
 search.onclick = async () => {
   try {
-    setLoading(true, 'Searching detections...');
-    status.textContent = 'Searching detections...';
+    setBusy(search, true, 'Searching...');
     const cameraSel = [...document.getElementById('camera').selectedOptions].map(o=>o.value);
     const eventTypes = typeOptions.filter(t => document.getElementById('t_'+t).checked);
+
+    summarizeFilters();
+    document.getElementById('noResultsHint').style.display = 'none';
 
     const data = await post('/api/detections', {
       ...creds(),
@@ -225,20 +297,27 @@ search.onclick = async () => {
       tr.innerHTML = `<td>${fmtTime(ev.start)}</td><td>${camName}</td><td>${tags||'-'}</td><td>${ev.score ?? '-'}</td><td>${img}</td>`;
       tbody.appendChild(tr);
     }
-    status.textContent = `Found ${data.count} events.`;
-    document.getElementById('foot').textContent = `Rows: ${data.count}`;
-  } catch(e){ status.textContent = e.message; }
-  finally { setLoading(false); }
+
+    renderDiagnostics(data.diagnostics);
+
+    if(!lastEvents.length){
+      renderNoResultsHint(data.diagnostics);
+      setStatus('No detections found for current filters.');
+    } else {
+      setStatus(`Found ${data.count} events.`);
+    }
+    document.getElementById('foot').textContent = `Rows: ${data.count || 0}`;
+  } catch(e){ setStatus(e.message, 'error'); }
+  finally { setBusy(search, false); }
 };
 
 save.onclick = async () => {
   try {
-    if(!lastEvents.length){ status.textContent='No events to save. Run Search first.'; return; }
+    if(!lastEvents.length){ setStatus('No events to save. Run Search first.', 'error'); return; }
     const outputDir = document.getElementById('outputDir').value.trim();
-    if(!outputDir){ status.textContent='Set output folder first.'; return; }
+    if(!outputDir){ setStatus('Set output folder first.', 'error'); return; }
 
-    setLoading(true, 'Saving images to disk...');
-    status.textContent = 'Saving images to disk...';
+    setBusy(save, true, 'Saving...');
     const data = await post('/api/save-images', {
       ...creds(),
       outputDir,
@@ -246,12 +325,20 @@ save.onclick = async () => {
       useEventThumbnail: document.getElementById('useEventThumbnail').checked
     });
 
-    status.textContent = `Saved ${data.savedCount} images (${data.failedCount} failed). Folder: ${outputDir}`;
-  } catch(e){ status.textContent = e.message; }
-  finally { setLoading(false); }
+    renderDiagnostics(data.diagnostics);
+    setStatus(`Saved ${data.savedCount} images (${data.failedCount} failed). Folder: ${outputDir}`);
+  } catch(e){ setStatus(e.message, 'error'); }
+  finally { setBusy(save, false); }
 };
 
 initDefaultRange();
+summarizeFilters();
+['from','to','timezone','limit','camera'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', summarizeFilters);
+});
+typeOptions.forEach(t=>{
+  document.getElementById('t_'+t).addEventListener('change', summarizeFilters);
+});
 </script>
 </body>
 </html>
