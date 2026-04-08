@@ -1,0 +1,133 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UniFi Protect Detections</title>
+  <style>
+    body{font-family:Arial,sans-serif;background:#0b1020;color:#e6eeff;margin:0}
+    .wrap{max-width:1100px;margin:20px auto;padding:0 16px}
+    .card{background:#121a30;border:1px solid #22345e;border-radius:10px;padding:12px;margin-bottom:12px}
+    label{display:block;font-size:12px;color:#9db2e8;margin-bottom:4px}
+    input,select,button{width:100%;padding:8px;border-radius:8px;border:1px solid #2a3f73;background:#0c1428;color:#e6eeff}
+    button{background:#2b62ff;border:none;cursor:pointer;font-weight:700}
+    .grid{display:grid;gap:10px}
+    .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+    .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #263a67;font-size:13px;vertical-align:top}
+    .muted{color:#9db2e8}
+    .pill{display:inline-block;background:#1c2f57;padding:2px 7px;border-radius:999px;margin-right:4px;font-size:11px}
+    img{max-width:320px;border-radius:8px;border:1px solid #34508f}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h2>UniFi Protect Detection Explorer</h2>
+
+  <div class="card grid g4">
+    <div><label>NVR Host/IP</label><input id="host" placeholder="192.168.1.50"/></div>
+    <div><label>Username</label><input id="username"/></div>
+    <div><label>Password</label><input id="password" type="password"/></div>
+    <div style="display:flex;align-items:end"><button id="loadCameras">Connect & Load Cameras</button></div>
+  </div>
+
+  <div class="card grid g4">
+    <div><label>From</label><input id="from" type="datetime-local"/></div>
+    <div><label>To</label><input id="to" type="datetime-local"/></div>
+    <div><label>Max Events</label><input id="limit" type="number" value="100" min="1" max="500"/></div>
+    <div><label>Camera</label><select id="camera" multiple size="4"></select></div>
+  </div>
+
+  <div class="card">
+    <label>Detection/Event Types</label>
+    <div class="grid g4" id="types"></div>
+    <br>
+    <button id="search">Search Detections</button>
+  </div>
+
+  <div class="card">
+    <div id="status" class="muted">Ready.</div>
+    <table>
+      <thead><tr><th>Time</th><th>Camera</th><th>Type</th><th>Score</th><th>Snapshot</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+const typeOptions = ['motion','ring','smartDetectZone','person','vehicle','animal','package'];
+const typesDiv = document.getElementById('types');
+for(const t of typeOptions){
+  const id = 't_'+t;
+  const el = document.createElement('div');
+  el.innerHTML = `<label><input type="checkbox" id="${id}" value="${t}"/> ${t}</label>`;
+  typesDiv.appendChild(el);
+}
+
+function creds(){
+  return {
+    host: document.getElementById('host').value.trim(),
+    username: document.getElementById('username').value.trim(),
+    password: document.getElementById('password').value
+  }
+}
+
+async function post(url, body){
+  const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json();
+  if(!r.ok) throw new Error(j.error || 'Request failed');
+  return j;
+}
+
+loadCameras.onclick = async () => {
+  try {
+    status.textContent = 'Connecting...';
+    const { cameras } = await post('/api/cameras', creds());
+    const sel = document.getElementById('camera');
+    sel.innerHTML='';
+    cameras.forEach(c=>{
+      const o = document.createElement('option');
+      o.value=c.id; o.textContent=`${c.name} (${c.model||'camera'})`;
+      sel.appendChild(o);
+    });
+    status.textContent = `Loaded ${cameras.length} cameras.`;
+  } catch(e){ status.textContent = e.message; }
+};
+
+search.onclick = async () => {
+  try {
+    status.textContent = 'Searching detections...';
+    const cameraSel = [...document.getElementById('camera').selectedOptions].map(o=>o.value);
+    const eventTypes = typeOptions.filter(t => document.getElementById('t_'+t).checked);
+
+    const data = await post('/api/detections', {
+      ...creds(),
+      startTime: document.getElementById('from').value,
+      endTime: document.getElementById('to').value,
+      limit: Number(document.getElementById('limit').value || 100),
+      cameraIds: cameraSel,
+      eventTypes
+    });
+
+    const tbody = document.getElementById('rows');
+    tbody.innerHTML='';
+
+    for(const ev of data.events){
+      const tr = document.createElement('tr');
+      const iso = ev.start ? new Date(ev.start).toLocaleString() : '-';
+      const tags = [ev.type, ...(ev.smartDetectTypes||[])].filter(Boolean)
+        .map(t=>`<span class="pill">${t}</span>`).join(' ');
+
+      const snapBody = { ...creds(), cameraId: ev.camera, width: 640 };
+      const snapReq = encodeURIComponent(JSON.stringify(snapBody));
+      const img = `<img loading="lazy" src="/api/snapshot-proxy?d=${snapReq}" onerror="this.style.display='none'"/>`;
+
+      tr.innerHTML = `<td>${iso}</td><td>${ev.camera||'-'}</td><td>${tags||'-'}</td><td>${ev.score ?? '-'}</td><td>${img}</td>`;
+      tbody.appendChild(tr);
+    }
+    status.textContent = `Found ${data.count} events.`;
+  } catch(e){ status.textContent = e.message; }
+};
+</script>
+</body>
+</html>
