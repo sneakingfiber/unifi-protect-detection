@@ -2,33 +2,38 @@
 
 Local Node.js service + web UI to query detection events from a UniFi Protect NVR.
 
+## What you can select in UI
+- NVR IP / host
+- Protect username/password
+- Event types
+- Camera(s)
+- Time interval (from / to)
+- Timezone (default: Europe/Rome)
+- Max results
+- Output folder for saving images
+
 ## Features
-- Login to Protect (host, username, password) from UI
-- Load cameras from NVR
-- Filter events by:
-  - event types (motion, person, vehicle, animal, package, etc.)
-  - camera(s)
-  - time interval (from/to)
-  - limit
-- View detection list
-- Show camera snapshots alongside results
+- Connect to UniFi Protect using `unifi-protect` SDK
+- Search events by filters
+- Preview snapshots in table
+- Save returned detection images to disk
+  - prefers event thumbnail
+  - fallback to camera snapshot
 
 ## Run
-
 ```bash
 npm install
 npm start
 ```
-
 Open: `http://localhost:8899`
 
 ## API routes
+- `GET /api/health`
 - `POST /api/cameras`
 - `POST /api/detections`
-- `POST /api/snapshot`
 - `GET /api/snapshot-proxy?d=...`
+- `POST /api/save-images`
 
 ## Notes
-- Uses `unifi-protect` Node SDK.
-- This project is for local network usage with your own NVR.
-- Credentials are kept in process memory only (not persisted to disk by this app).
+- Designed for local network usage with your NVR.
+- Credentials are only kept in process memory (not written by this app).
