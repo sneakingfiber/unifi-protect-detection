@@ -33,6 +33,10 @@
     .btn-muted:hover{background:#e2ebff}
     .row{display:flex;gap:8px;align-items:end}
     .status{font-size:13px;color:var(--muted)}
+    .loading{position:fixed;inset:0;background:rgba(10,20,40,.32);display:none;align-items:center;justify-content:center;z-index:50}
+    .loading .box{background:#fff;border:1px solid var(--line);padding:14px 18px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.12);font-weight:600}
+    .spin{display:inline-block;width:14px;height:14px;border:2px solid #b9cdfa;border-top-color:#2b62ff;border-radius:50%;animation:rot .9s linear infinite;margin-right:8px;vertical-align:-2px}
+    @keyframes rot{to{transform:rotate(360deg)}}
     table{width:100%;border-collapse:collapse}
     th,td{padding:10px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top;text-align:left}
     th{color:#4c5f86;background:#f9fbff}
@@ -101,6 +105,7 @@
       <div class="small" id="foot"></div>
     </div>
   </div>
+<div id="loading" class="loading"><div class="box"><span class="spin"></span><span id="loadingText">Loading...</span></div></div>
 
 <script>
 const typeOptions = ['motion','ring','smartDetectZone','person','vehicle','animal','package'];
@@ -118,6 +123,33 @@ for(const t of typeOptions){
 typeOptions.filter(t=>['person','vehicle','animal','package'].includes(t)).forEach(t=>{
   const e=document.getElementById('t_'+t); if(e) e.checked=true;
 });
+
+function setLoading(on, text='Loading...'){
+  const l = document.getElementById('loading');
+  const t = document.getElementById('loadingText');
+  t.textContent = text;
+  l.style.display = on ? 'flex' : 'none';
+  loadCameras.disabled = on;
+  search.disabled = on;
+  save.disabled = on;
+}
+
+function toLocalInputValue(date){
+  const pad=n=>String(n).padStart(2,'0');
+  const y=date.getFullYear();
+  const m=pad(date.getMonth()+1);
+  const d=pad(date.getDate());
+  const h=pad(date.getHours());
+  const mi=pad(date.getMinutes());
+  return `${y}-${m}-${d}T${h}:${mi}`;
+}
+
+function initDefaultRange(){
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60*60*1000);
+  document.getElementById('to').value = toLocalInputValue(now);
+  document.getElementById('from').value = toLocalInputValue(oneHourAgo);
+}
 
 function creds(){
   return {
@@ -143,6 +175,7 @@ function fmtTime(v){
 
 loadCameras.onclick = async () => {
   try {
+    setLoading(true, 'Connecting to NVR...');
     status.textContent = 'Connecting to NVR...';
     const { cameras } = await post('/api/cameras', creds());
     const sel = document.getElementById('camera');
@@ -154,10 +187,12 @@ loadCameras.onclick = async () => {
     });
     status.textContent = `Loaded ${cameras.length} cameras.`;
   } catch(e){ status.textContent = e.message; }
+  finally { setLoading(false); }
 };
 
 search.onclick = async () => {
   try {
+    setLoading(true, 'Searching detections...');
     status.textContent = 'Searching detections...';
     const cameraSel = [...document.getElementById('camera').selectedOptions].map(o=>o.value);
     const eventTypes = typeOptions.filter(t => document.getElementById('t_'+t).checked);
@@ -193,6 +228,7 @@ search.onclick = async () => {
     status.textContent = `Found ${data.count} events.`;
     document.getElementById('foot').textContent = `Rows: ${data.count}`;
   } catch(e){ status.textContent = e.message; }
+  finally { setLoading(false); }
 };
 
 save.onclick = async () => {
@@ -201,6 +237,7 @@ save.onclick = async () => {
     const outputDir = document.getElementById('outputDir').value.trim();
     if(!outputDir){ status.textContent='Set output folder first.'; return; }
 
+    setLoading(true, 'Saving images to disk...');
     status.textContent = 'Saving images to disk...';
     const data = await post('/api/save-images', {
       ...creds(),
@@ -211,7 +248,10 @@ save.onclick = async () => {
 
     status.textContent = `Saved ${data.savedCount} images (${data.failedCount} failed). Folder: ${outputDir}`;
   } catch(e){ status.textContent = e.message; }
+  finally { setLoading(false); }
 };
+
+initDefaultRange();
 </script>
 </body>
 </html>

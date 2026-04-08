@@ -12,11 +12,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const sessions = new Map();
 
+function log(...args) {
+  console.log(new Date().toISOString(), '-', ...args);
+}
+
 function keyOf({ host, username }) {
   return `${host}::${username}`;
 }
 
 async function getSession({ host, username, password, force = false }) {
+  log('[session] request', { host, username, force });
   const key = keyOf({ host, username });
   let entry = sessions.get(key);
 
@@ -30,9 +35,14 @@ async function getSession({ host, username, password, force = false }) {
 
   const needsLogin = force || !entry.lastLogin || (Date.now() - entry.lastLogin > 10 * 60 * 1000);
   if (needsLogin) {
+    log('[session] login start', { host, username });
     const ok = await entry.api.login(host, username, password);
-    if (!ok) throw new Error('Protect login failed. Check host/username/password.');
-    await entry.api.getBootstrap();
+    if (!ok) {
+      log('[session] login failed', { host, username });
+      throw new Error('Protect login failed. Check host/username/password.');
+    }
+    const bs = await entry.api.getBootstrap();
+    log('[session] login ok + bootstrap', { host, username, bootstrap: !!bs, cameras: entry.api.bootstrap?.cameras?.length || 0 });
     entry.lastLogin = Date.now();
   }
 
@@ -87,6 +97,7 @@ app.get('/api/health', async (_req, res) => {
 app.post('/api/cameras', async (req, res) => {
   try {
     const { host, username, password } = req.body;
+    log('[api/cameras] incoming', { host, username });
     if (!host || !username || !password) {
       return res.status(400).json({ error: 'host, username, password are required' });
     }
@@ -99,8 +110,10 @@ app.post('/api/cameras', async (req, res) => {
       isRecording: c.isRecording,
     }));
 
+    log('[api/cameras] result', { count: cameras.length });
     res.json({ cameras });
   } catch (e) {
+    log('[api/cameras] error', e.message);
     res.status(500).json({ error: e.message });
   }
 });
@@ -119,6 +132,16 @@ app.post('/api/detections', async (req, res) => {
       return res.status(400).json({ error: 'host, username, password are required' });
     }
 
+    log('[api/detections] incoming', {
+      host,
+      username,
+      startTime,
+      endTime,
+      cameraIdsCount: cameraIds.length,
+      eventTypes,
+      limit,
+    });
+
     const api = await getSession({ host, username, password });
 
     const params = new URLSearchParams();
@@ -134,8 +157,11 @@ app.post('/api/detections', async (req, res) => {
     const includeTypes = eventTypes.filter(Boolean);
     for (const t of includeTypes) params.append('types', t);
 
-    const events = await api.retrieve(buildProtectUrl(host, `/proxy/protect/api/events?${params.toString()}`));
+    const url = buildProtectUrl(host, `/proxy/protect/api/events?${params.toString()}`);
+    log('[api/detections] request', url);
+    const events = await api.retrieve(url);
 
+    const totalFetched = Array.isArray(events) ? events.length : 0;
     const normalized = (Array.isArray(events) ? events : [])
       .filter(ev => {
         if (!includeTypes.length) return true;
@@ -146,8 +172,10 @@ app.post('/api/detections', async (req, res) => {
 
     const cameraMap = Object.fromEntries((api.bootstrap?.cameras || []).map(c => [c.id, c.name || c.id]));
 
+    log('[api/detections] result', { totalFetched, afterFilter: normalized.length });
     res.json({ count: normalized.length, events: normalized, cameraMap });
   } catch (e) {
+    log('[api/detections] error', e.message);
     res.status(500).json({ error: e.message });
   }
 });
