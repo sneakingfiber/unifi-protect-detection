@@ -66,8 +66,12 @@ function safeName(v) {
   return String(v || '').replace(/[^a-zA-Z0-9._-]+/g, '_').slice(0, 120);
 }
 
-async function fetchEventThumbnail(api, eventId) {
-  const response = await api.retrieve(`/proxy/protect/api/events/${eventId}/thumbnail`, { method: 'GET' });
+function buildProtectUrl(host, endpointWithSlash) {
+  return `https://${host}${endpointWithSlash}`;
+}
+
+async function fetchEventThumbnail(api, host, eventId) {
+  const response = await api.retrieve(buildProtectUrl(host, `/proxy/protect/api/events/${eventId}/thumbnail`), { method: 'GET' });
   if (!response || !response.body) return null;
   try {
     return Buffer.from(await response.body.arrayBuffer());
@@ -130,7 +134,7 @@ app.post('/api/detections', async (req, res) => {
     const includeTypes = eventTypes.filter(Boolean);
     for (const t of includeTypes) params.append('types', t);
 
-    const events = await api.retrieve(`/proxy/protect/api/events?${params.toString()}`);
+    const events = await api.retrieve(buildProtectUrl(host, `/proxy/protect/api/events?${params.toString()}`));
 
     const normalized = (Array.isArray(events) ? events : [])
       .filter(ev => {
@@ -198,7 +202,7 @@ app.post('/api/save-images', async (req, res) => {
 
         let img = null;
         if (useEventThumbnail && eventId) {
-          img = await fetchEventThumbnail(api, eventId);
+          img = await fetchEventThumbnail(api, host, eventId);
         }
 
         if (!img) {
