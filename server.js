@@ -49,11 +49,11 @@ async function getSession({ host, username, password, force = false }) {
   return entry.api;
 }
 
-function toUnixSeconds(input) {
+function toUnixMillis(input) {
   if (!input) return null;
   const d = new Date(input);
   if (Number.isNaN(d.getTime())) return null;
-  return Math.floor(d.getTime() / 1000);
+  return d.getTime();
 }
 
 function normalizeEvent(ev) {
@@ -78,6 +78,38 @@ function safeName(v) {
 
 function buildProtectUrl(host, endpointWithSlash) {
   return `https://${host}${endpointWithSlash}`;
+}
+
+async function fetchEvents(api, host, params) {
+  const url = buildProtectUrl(host, `/proxy/protect/api/events?${params.toString()}`);
+  log('[api/detections] request', {
+    host,
+    hasStart: params.has('start'),
+    hasEnd: params.has('end'),
+    cameraFilters: params.getAll('camera').length,
+    typeFilters: params.getAll('types').length,
+    limit: params.get('limit'),
+  });
+  const events = await retrieveJson(api, url);
+  return Array.isArray(events) ? events : [];
+}
+
+async function retrieveJson(api, url) {
+  const result = await api.retrieve(url);
+  if (Array.isArray(result)) return result;
+  if (result && typeof result === 'object' && result.body && typeof result.statusCode === 'number') {
+    if (result.statusCode < 200 || result.statusCode >= 300) {
+      throw new Error(`Protect API HTTP ${result.statusCode}`);
+    }
+    const txt = await result.body.text();
+    if (!txt) return [];
+    try {
+      return JSON.parse(txt);
+    } catch {
+      throw new Error('Protect API returned non-JSON body');
+    }
+  }
+  return result || [];
 }
 
 async function fetchEventThumbnail(api, host, eventId) {
@@ -144,39 +176,76 @@ app.post('/api/detections', async (req, res) => {
 
     const api = await getSession({ host, username, password });
 
-    const params = new URLSearchParams();
-    params.set('limit', String(Math.min(Number(limit) || 100, 500)));
-
-    const start = toUnixSeconds(startTime);
-    const end = toUnixSeconds(endTime);
-    if (start) params.set('start', String(start));
-    if (end) params.set('end', String(end));
-
-    for (const c of cameraIds.filter(Boolean)) params.append('camera', c);
-
+    const safeLimit = Math.min(Math.max(Number(limit) || 100, 1), 500);
     const includeTypes = eventTypes.filter(Boolean);
-    for (const t of includeTypes) params.append('types', t);
+    const includeCameras = cameraIds.filter(Boolean);
 
-    const url = buildProtectUrl(host, `/proxy/protect/api/events?${params.toString()}`);
-    log('[api/detections] request', url);
-    const events = await api.retrieve(url);
+    const filteredParams = new URLSearchParams();
+    filteredParams.set('limit', String(safeLimit));
 
-    const totalFetched = Array.isArray(events) ? events.length : 0;
-    const normalized = (Array.isArray(events) ? events : [])
-      .filter(ev => {
+    const start = toUnixMillis(startTime);
+    const end = toUnixMillis(endTime);
+    if (start) filteredParams.set('start', String(start));
+    if (end) filteredParams.set('end', String(end));
+
+    for (const c of includeCameras) filteredParams.append('camera', c);
+    for (const t of includeTypes) filteredParams.append('types', t);
+
+    const filteredEvents = await fetchEvents(api, host, filteredParams);
+    const localFilteredEvents = filteredEvents.filter(ev => {
+      const matchesCamera = !includeCameras.length || includeCameras.includes(ev?.camera);
+      if (!matchesCamera) return false;
+      if (!includeTypes.length) return true;
+      const tags = [ev?.type, ...(ev?.smartDetectTypes || [])].filter(Boolean);
+      return includeTypes.some(t => tags.includes(t));
+    });
+
+    let finalEvents = localFilteredEvents;
+    let broadEvents = [];
+
+    if (localFilteredEvents.length === 0 && (includeTypes.length || includeCameras.length)) {
+      const broadParams = new URLSearchParams();
+      broadParams.set('limit', String(safeLimit));
+      if (start) broadParams.set('start', String(start));
+      if (end) broadParams.set('end', String(end));
+
+      broadEvents = await fetchEvents(api, host, broadParams);
+      finalEvents = broadEvents.filter(ev => {
+        const matchesCamera = !includeCameras.length || includeCameras.includes(ev?.camera);
+        if (!matchesCamera) return false;
         if (!includeTypes.length) return true;
         const tags = [ev?.type, ...(ev?.smartDetectTypes || [])].filter(Boolean);
         return includeTypes.some(t => tags.includes(t));
-      })
-      .map(normalizeEvent);
+      });
 
+      log('[api/detections] fallback-broad-query', {
+        filteredRawCount: filteredEvents.length,
+        broadCount: broadEvents.length,
+        afterLocalFilter: finalEvents.length,
+      });
+    }
+
+    const normalized = finalEvents.map(normalizeEvent);
     const cameraMap = Object.fromEntries((api.bootstrap?.cameras || []).map(c => [c.id, c.name || c.id]));
+    const diagnostics = {
+      broadCount: broadEvents.length,
+      filterStage: {
+        filteredQueryRawCount: filteredEvents.length,
+        filteredQueryLocalCount: localFilteredEvents.length,
+        broadQueryRawCount: broadEvents.length,
+        finalCount: normalized.length,
+      },
+    };
 
-    log('[api/detections] result', { totalFetched, afterFilter: normalized.length });
-    res.json({ count: normalized.length, events: normalized, cameraMap });
+    log('[api/detections] result', diagnostics.filterStage);
+    res.json({ count: normalized.length, events: normalized, cameraMap, diagnostics });
   } catch (e) {
-    log('[api/detections] error', e.message);
-    res.status(500).json({ error: e.message });
+    const errorMessage = e?.message || 'Unknown detections error';
+    log('[api/detections] error', { message: errorMessage, name: e?.name });
+    res.status(500).json({
+      error: 'Failed to fetch detections from UniFi Protect. Verify filters/time range and server reachability.',
+      details: errorMessage,
+    });
   }
 });
 
