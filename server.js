@@ -249,6 +249,25 @@ app.post('/api/detections', async (req, res) => {
   }
 });
 
+app.get('/api/event-thumbnail-proxy', async (req, res) => {
+  try {
+    const raw = req.query.d;
+    if (!raw) return res.status(400).send('missing payload');
+    const body = JSON.parse(decodeURIComponent(raw));
+    const { host, username, password, eventId } = body;
+    if (!eventId) return res.status(400).send('missing eventId');
+
+    const api = await getSession({ host, username, password });
+    const img = await fetchEventThumbnail(api, host, eventId);
+    if (!img) return res.status(404).send('event thumbnail unavailable');
+
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.send(Buffer.from(img));
+  } catch {
+    res.status(500).send('event thumbnail error');
+  }
+});
+
 app.get('/api/snapshot-proxy', async (req, res) => {
   try {
     const raw = req.query.d;

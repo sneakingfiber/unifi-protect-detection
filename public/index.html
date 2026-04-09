@@ -6,115 +6,314 @@
   <title>UniFi Protect Detection Explorer</title>
   <style>
     :root{
-      --bg:#f4f7fb;
+      --bg:#f2f5fa;
+      --bg-soft:#f7f9fd;
       --card:#ffffff;
-      --ink:#1f2a44;
-      --muted:#5e6b85;
-      --line:#dfe6f3;
-      --brand:#1466ff;
-      --brand2:#0f4ed1;
-      --pill:#e9f1ff;
+      --ink:#1f2937;
+      --ink-soft:#4b5567;
+      --line:#dbe3ef;
+      --line-soft:#e9eef7;
+      --brand:#0f63ff;
+      --brand-2:#0b4fd1;
+      --brand-soft:#eaf2ff;
+      --success:#2d7a46;
+      --danger:#b42318;
+      --radius-lg:16px;
+      --radius-md:12px;
+      --radius-sm:10px;
+      --shadow-card:0 6px 18px rgba(16,24,40,.05);
+      --shadow-soft:0 2px 8px rgba(16,24,40,.04);
     }
-    body{font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--ink);margin:0}
-    .top{background:linear-gradient(180deg,#f8fbff,#eef4ff);border-bottom:1px solid var(--line);padding:16px 0}
-    .wrap{max-width:1200px;margin:0 auto;padding:0 16px}
-    .title{font-size:22px;font-weight:700;margin:0}
-    .subtitle{color:var(--muted);font-size:13px;margin-top:4px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin:14px 0;box-shadow:0 2px 8px rgba(31,42,68,.04)}
-    .grid{display:grid;gap:10px}
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Inter,"Segoe UI",Arial,sans-serif;
+      color:var(--ink);
+      background:
+        radial-gradient(1200px 550px at -5% -20%, #e8f0ff 0, transparent 45%),
+        radial-gradient(900px 450px at 110% -30%, #edf5ff 0, transparent 45%),
+        var(--bg);
+      line-height:1.35;
+    }
+
+    .wrap{max-width:1220px;margin:0 auto;padding:0 18px}
+
+    .top{
+      border-bottom:1px solid var(--line);
+      background:linear-gradient(180deg,#fafdff 0%, #f1f6ff 100%);
+      padding:18px 0 16px;
+      position:sticky;
+      top:0;
+      z-index:5;
+      backdrop-filter:blur(8px);
+    }
+
+    .title{font-size:24px;font-weight:800;letter-spacing:.1px;margin:0}
+    .subtitle{margin-top:6px;font-size:13px;color:var(--ink-soft)}
+
+    .layout{padding:18px 0 22px}
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius-lg);
+      box-shadow:var(--shadow-card);
+      padding:16px;
+      margin:0 0 14px;
+    }
+
+    .section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+    .section-title{font-size:13px;font-weight:700;color:#314164;text-transform:uppercase;letter-spacing:.45px}
+
+    .grid{display:grid;gap:12px}
     .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
     .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
-    label{display:block;font-size:12px;color:var(--muted);margin:0 0 5px 0}
-    input,select,button{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
-    input:focus,select:focus{outline:2px solid #cfe0ff;border-color:#9fc0ff}
-    button{background:var(--brand);color:#fff;font-weight:700;border:none;cursor:pointer}
-    button:hover{background:var(--brand2)}
-    .btn-muted{background:#eef3ff;color:#21407f}
-    .btn-muted:hover{background:#e2ebff}
-    .row{display:flex;gap:8px;align-items:end}
-    .status{font-size:13px;color:var(--muted)}
-    .status.busy{color:#1f57cf;font-weight:600}
-    .status.error{color:#b3261e;font-weight:600}
-    .spin{display:inline-block;width:14px;height:14px;border:2px solid #b9cdfa;border-top-color:#2b62ff;border-radius:50%;animation:rot .9s linear infinite;margin-right:8px;vertical-align:-2px}
+
+    .field{display:flex;flex-direction:column;min-width:0}
+    label{display:block;font-size:12px;color:var(--ink-soft);margin:0 0 6px 0;font-weight:600}
+
+    input,select,button{
+      width:100%;
+      min-height:40px;
+      padding:10px 11px;
+      border:1px solid var(--line);
+      border-radius:var(--radius-sm);
+      background:#fff;
+      color:var(--ink);
+      font-size:14px;
+      transition:border-color .15s, box-shadow .15s, background .15s;
+    }
+
+    input:hover,select:hover{border-color:#c6d3e5}
+    input:focus,select:focus{
+      outline:none;
+      border-color:#9cbcff;
+      box-shadow:0 0 0 3px rgba(15,99,255,.14);
+    }
+
+    select[multiple]{min-height:158px;padding:8px}
+
+    button{
+      border:none;
+      cursor:pointer;
+      background:linear-gradient(180deg,var(--brand),#0d57e3);
+      color:#fff;
+      font-weight:700;
+      box-shadow:0 6px 14px rgba(15,99,255,.26);
+    }
+    button:hover{background:linear-gradient(180deg,#1169ff,#0a4fcd)}
+    button:disabled{opacity:.68;cursor:not-allowed}
+
+    .btn-muted{
+      background:linear-gradient(180deg,#f4f7fe,#e8eefc);
+      color:#21407f;
+      border:1px solid #d7e2fb;
+      box-shadow:none;
+    }
+    .btn-muted:hover{background:linear-gradient(180deg,#eef3fd,#e2eafb)}
+
+    .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
+
+    .toolbar{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:space-between;
+      padding:12px 14px;
+      border:1px solid var(--line-soft);
+      border-radius:14px;
+      background:var(--bg-soft);
+    }
+
+    .toolbar-actions{display:flex;gap:10px;flex-wrap:wrap;min-width:300px}
+    .toolbar-actions button{min-width:220px;flex:1}
+
+    .status{
+      font-size:13px;
+      color:var(--ink-soft);
+      padding:9px 12px;
+      border-radius:999px;
+      background:#fff;
+      border:1px solid var(--line);
+      box-shadow:var(--shadow-soft);
+      min-height:38px;
+      display:flex;
+      align-items:center;
+    }
+
+    .status.busy{color:#1f57cf;font-weight:600;background:#edf3ff;border-color:#cadeff}
+    .status.error{color:var(--danger);font-weight:600;background:#fff2f2;border-color:#ffd4d2}
+
     .inline-spin{display:inline-block;width:12px;height:12px;border:2px solid #b9cdfa;border-top-color:#2b62ff;border-radius:50%;animation:rot .9s linear infinite;margin-right:6px;vertical-align:-1px}
-    .hint{border:1px dashed #cfe0ff;background:#f7faff;border-radius:10px;padding:10px;color:#304266;font-size:12px;margin-top:10px}
-    .diag{margin-top:10px;background:#f8faff;border:1px solid var(--line);border-radius:10px;padding:10px}
-    .diag pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;font-size:11px;color:#425071}
-    .chips{display:flex;flex-wrap:wrap;gap:6px}
+
+    .chips{display:flex;flex-wrap:wrap;gap:7px}
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:5px;
+      background:var(--brand-soft);
+      border:1px solid #d4e4ff;
+      color:#224280;
+      padding:4px 9px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:600;
+      line-height:1.2;
+    }
+
+    .hint{
+      border:1px dashed #cfe0ff;
+      background:#f7faff;
+      border-radius:12px;
+      padding:11px 12px;
+      color:#304266;
+      font-size:12px;
+      margin-top:10px;
+    }
+
+    .diag{margin-top:10px;background:#f8faff;border:1px solid var(--line);border-radius:12px;padding:10px}
+    .diag pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:#425071}
+
+    .small{font-size:12px;color:var(--ink-soft)}
+
+    .table-wrap{
+      margin-top:10px;
+      border:1px solid var(--line);
+      border-radius:12px;
+      overflow:auto;
+      background:#fff;
+    }
+
+    table{width:100%;border-collapse:collapse;min-width:760px}
+    th,td{padding:11px 12px;border-bottom:1px solid var(--line-soft);font-size:13px;vertical-align:top;text-align:left}
+    th{color:#425472;background:#f8fbff;font-size:12px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;z-index:1}
+    tr:hover td{background:#fbfdff}
+
+    img{
+      max-width:220px;
+      width:100%;
+      border-radius:10px;
+      border:1px solid #dbe4f5;
+      box-shadow:0 2px 8px rgba(31,42,68,.08);
+      background:#f5f8ff;
+      object-fit:cover;
+    }
+
+    .foot{margin-top:10px}
+
     @keyframes rot{to{transform:rotate(360deg)}}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:10px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:top;text-align:left}
-    th{color:#4c5f86;background:#f9fbff}
-    .pill{display:inline-block;background:var(--pill);border:1px solid #d4e4ff;padding:2px 8px;border-radius:999px;margin-right:4px;font-size:11px}
-    img{max-width:220px;border-radius:8px;border:1px solid #dbe4f5}
-    .small{font-size:12px;color:var(--muted)}
-    @media (max-width:980px){.g4,.g3{grid-template-columns:1fr}}
+
+    @media (max-width:1100px){
+      .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .toolbar-actions button{min-width:190px}
+    }
+
+    @media (max-width:840px){
+      .g3,.g4{grid-template-columns:1fr}
+      .wrap{padding:0 14px}
+      .top{position:static}
+      .toolbar{align-items:stretch}
+      .toolbar-actions{min-width:0;width:100%}
+      .toolbar-actions button{width:100%}
+      .status{width:100%}
+      .title{font-size:22px}
+      .card{padding:14px}
+    }
   </style>
 </head>
 <body>
   <div class="top">
     <div class="wrap">
       <h1 class="title">UniFi Protect Detection Explorer</h1>
-      <div class="subtitle">Filter detections by NVR, camera, event type and time window — then export images to disk.</div>
+      <div class="subtitle">Filter detections by NVR, camera, event type, and time window — then export images to disk.</div>
     </div>
   </div>
 
-  <div class="wrap">
-    <div class="card grid g4">
-      <div><label>NVR IP / Host</label><input id="host" placeholder="192.168.1.50"/></div>
-      <div><label>Protect Username</label><input id="username"/></div>
-      <div><label>Protect Password</label><input id="password" type="password"/></div>
-      <div class="row"><button id="loadCameras">Connect & Load Cameras</button></div>
-    </div>
-
-    <div class="card grid g4">
-      <div><label>From</label><input id="from" type="datetime-local"/></div>
-      <div><label>To</label><input id="to" type="datetime-local"/></div>
-      <div><label>Timezone</label>
-        <select id="timezone">
-          <option value="Europe/Rome" selected>Europe/Rome</option>
-          <option value="UTC">UTC</option>
-          <option value="Europe/London">Europe/London</option>
-          <option value="America/New_York">America/New_York</option>
-          <option value="Asia/Dubai">Asia/Dubai</option>
-        </select>
+  <div class="wrap layout">
+    <div class="card">
+      <div class="section-head">
+        <div class="section-title">Connection</div>
       </div>
-      <div><label>Max Events</label><input id="limit" type="number" value="100" min="1" max="500"/></div>
-    </div>
-
-    <div class="card grid g3">
-      <div><label>Cameras (multi-select)</label><select id="camera" multiple size="5"></select></div>
-      <div>
-        <label>Event Types</label>
-        <div class="grid g3" id="types"></div>
+      <div class="grid g4">
+        <div class="field"><label>NVR IP / Host</label><input id="host" placeholder="192.168.1.50"/></div>
+        <div class="field"><label>Protect Username</label><input id="username"/></div>
+        <div class="field"><label>Protect Password</label><input id="password" type="password"/></div>
+        <div class="field row"><button id="loadCameras">Connect &amp; Load Cameras</button></div>
       </div>
-      <div>
-        <label>Save images to folder</label>
-        <input id="outputDir" placeholder="/home/fyder9/detections"/>
-        <div style="height:8px"></div>
-        <label><input type="checkbox" id="useEventThumbnail" checked/> Prefer event thumbnail (fallback to camera snapshot)</label>
-      </div>
-    </div>
-
-    <div class="card row">
-      <button id="search">Search Detections</button>
-      <button id="save" class="btn-muted">Save Returned Images to Disk</button>
-      <div id="status" class="status">Ready.</div>
     </div>
 
     <div class="card">
-      <div class="small">Applied filters</div>
-      <div id="filterSummary" class="chips" style="margin-top:6px"></div>
+      <div class="section-head">
+        <div class="section-title">Time &amp; Scope</div>
+      </div>
+      <div class="grid g4">
+        <div class="field"><label>From</label><input id="from" type="datetime-local"/></div>
+        <div class="field"><label>To</label><input id="to" type="datetime-local"/></div>
+        <div class="field"><label>Timezone</label>
+          <select id="timezone">
+            <option value="Europe/Rome" selected>Europe/Rome</option>
+            <option value="UTC">UTC</option>
+            <option value="Europe/London">Europe/London</option>
+            <option value="America/New_York">America/New_York</option>
+            <option value="Asia/Dubai">Asia/Dubai</option>
+          </select>
+        </div>
+        <div class="field"><label>Max Events</label><input id="limit" type="number" value="100" min="1" max="500"/></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
+        <div class="section-title">Filters &amp; Export</div>
+      </div>
+      <div class="grid g3">
+        <div class="field"><label>Cameras (multi-select)</label><select id="camera" multiple size="5"></select></div>
+        <div class="field">
+          <label>Event Types</label>
+          <div class="grid g3" id="types"></div>
+        </div>
+        <div class="field">
+          <label>Save images to folder</label>
+          <input id="outputDir" placeholder="/home/fyder9/detections"/>
+          <div style="height:9px"></div>
+          <label><input type="checkbox" id="useEventThumbnail" checked/> Prefer event thumbnail (fallback to camera snapshot)</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="toolbar">
+        <div class="toolbar-actions">
+          <button id="search">Search Detections</button>
+          <button id="save" class="btn-muted">Save Returned Images to Disk</button>
+        </div>
+        <div id="status" class="status">Ready.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
+        <div class="section-title">Results</div>
+        <div class="small">Applied filters</div>
+      </div>
+
+      <div id="filterSummary" class="chips"></div>
       <div id="noResultsHint" class="hint" style="display:none"></div>
+
       <div id="diagnostics" class="diag" style="display:none">
         <div class="small" style="margin-bottom:6px">Backend diagnostics</div>
         <pre id="diagnosticsText"></pre>
       </div>
-      <table style="margin-top:10px">
-        <thead><tr><th>Time</th><th>Camera</th><th>Type</th><th>Score</th><th>Preview</th></tr></thead>
-        <tbody id="rows"></tbody>
-      </table>
-      <div class="small" id="foot"></div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Time</th><th>Camera</th><th>Type</th><th>Score</th><th>Preview</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="small foot" id="foot"></div>
     </div>
   </div>
 
@@ -289,9 +488,11 @@ search.onclick = async () => {
       const tags = [ev.type, ...(ev.smartDetectTypes||[])].filter(Boolean)
         .map(t=>`<span class="pill">${t}</span>`).join(' ');
 
+      const eventBody = { ...creds(), eventId: ev.id };
+      const eventReq = encodeURIComponent(JSON.stringify(eventBody));
       const snapBody = { ...creds(), cameraId: ev.camera, width: 640 };
       const snapReq = encodeURIComponent(JSON.stringify(snapBody));
-      const img = `<img loading="lazy" src="/api/snapshot-proxy?d=${snapReq}" onerror="this.style.display='none'"/>`;
+      const img = `<img loading="lazy" src="/api/event-thumbnail-proxy?d=${eventReq}" onerror="this.onerror=null;this.src='/api/snapshot-proxy?d=${snapReq}'"/>`;
 
       const camName = lastCameraMap[ev.camera] || ev.camera || '-';
       tr.innerHTML = `<td>${fmtTime(ev.start)}</td><td>${camName}</td><td>${tags||'-'}</td><td>${ev.score ?? '-'}</td><td>${img}</td>`;
