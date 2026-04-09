@@ -252,13 +252,7 @@
         <div class="field"><label>From</label><input id="from" type="datetime-local"/></div>
         <div class="field"><label>To</label><input id="to" type="datetime-local"/></div>
         <div class="field"><label>Timezone</label>
-          <select id="timezone">
-            <option value="Europe/Rome" selected>Europe/Rome</option>
-            <option value="UTC">UTC</option>
-            <option value="Europe/London">Europe/London</option>
-            <option value="America/New_York">America/New_York</option>
-            <option value="Asia/Dubai">Asia/Dubai</option>
-          </select>
+          <select id="timezone"></select>
         </div>
         <div class="field"><label>Max Events</label><input id="limit" type="number" value="100" min="1" max="500"/></div>
       </div>
@@ -269,7 +263,13 @@
         <div class="section-title">Filters &amp; Export</div>
       </div>
       <div class="grid g3">
-        <div class="field"><label>Cameras (multi-select)</label><select id="camera" multiple size="5"></select></div>
+        <div class="field">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <label style="margin:0">Cameras (multi-select)</label>
+            <span id="camToggle" style="font-size:11px;font-weight:600;color:var(--brand);cursor:pointer;display:none">Select All</span>
+          </div>
+          <select id="camera" multiple size="5"></select>
+        </div>
         <div class="field">
           <label>Event Types</label>
           <div class="grid g3" id="types"></div>
@@ -287,7 +287,7 @@
       <div class="toolbar">
         <div class="toolbar-actions">
           <button id="search">Search Detections</button>
-          <button id="save" class="btn-muted">Save Returned Images to Disk</button>
+          <button id="save" class="btn-muted">Save Selected Images to Disk</button>
         </div>
         <div id="status" class="status">Ready.</div>
       </div>
@@ -309,7 +309,7 @@
 
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Time</th><th>Camera</th><th>Type</th><th>Score</th><th>Preview</th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="selectAll" title="Select all rows"/></th><th>Time</th><th>Camera</th><th>Type</th><th>Score</th><th>Preview</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
@@ -336,6 +336,19 @@ for(const t of typeOptions){
 
 typeOptions.filter(t=>['person','vehicle','animal','package'].includes(t)).forEach(t=>{
   const e=document.getElementById('t_'+t); if(e) e.checked=true;
+});
+
+let camAllSelected = false;
+document.getElementById('camToggle').addEventListener('click', () => {
+  camAllSelected = !camAllSelected;
+  const sel = document.getElementById('camera');
+  for (const o of sel.options) o.selected = camAllSelected;
+  document.getElementById('camToggle').textContent = camAllSelected ? 'Select None' : 'Select All';
+  summarizeFilters();
+});
+
+document.getElementById('selectAll').addEventListener('change', function() {
+  document.querySelectorAll('.row-check').forEach(cb => cb.checked = this.checked);
 });
 
 const buttonDefaults = new Map();
@@ -372,6 +385,19 @@ function toLocalInputValue(date){
   return `${y}-${m}-${d}T${h}:${mi}`;
 }
 
+function localInputToUtcMs(str, ianaTimezone) {
+  if (!str) return null;
+  const naive = new Date(str + 'Z');
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ianaTimezone,
+    year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false
+  }).formatToParts(naive);
+  const p = Object.fromEntries(parts.filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
+  const tzDate = new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`);
+  return naive.getTime() + (naive.getTime() - tzDate.getTime());
+}
+
 function initDefaultRange(){
   const now = new Date();
   const oneHourAgo = new Date(now.getTime() - 60*60*1000);
@@ -392,6 +418,24 @@ async function post(url, body){
   const j = await r.json();
   if(!r.ok) throw new Error(j.error || 'Request failed');
   return j;
+}
+
+function populateTimezones() {
+  const preferred = ['Europe/Rome','UTC','Europe/London','America/New_York',
+                     'America/Los_Angeles','America/Chicago','Asia/Dubai',
+                     'Asia/Tokyo','Asia/Singapore','Australia/Sydney'];
+  const sel = document.getElementById('timezone');
+  const all = (typeof Intl.supportedValuesOf === 'function')
+    ? Intl.supportedValuesOf('timeZone') : preferred;
+  const rest = all.filter(tz => !preferred.includes(tz));
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  [...preferred, ...rest].forEach(tz => {
+    const o = document.createElement('option');
+    o.value = tz; o.textContent = tz;
+    if (tz === browserTz) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (!sel.value) sel.value = 'Europe/Rome';
 }
 
 function fmtTime(v){
@@ -452,6 +496,10 @@ loadCameras.onclick = async () => {
       o.value=c.id; o.textContent=`${c.name} (${c.model||'camera'})`;
       sel.appendChild(o);
     });
+    const toggle = document.getElementById('camToggle');
+    toggle.style.display = cameras.length > 1 ? 'inline' : 'none';
+    toggle.textContent = 'Select All';
+    camAllSelected = false;
     summarizeFilters();
     renderDiagnostics(diagnostics);
     setStatus(`Connected. Loaded ${cameras.length} cameras.`);
@@ -470,8 +518,8 @@ search.onclick = async () => {
 
     const data = await post('/api/detections', {
       ...creds(),
-      startTime: document.getElementById('from').value,
-      endTime: document.getElementById('to').value,
+      startTime: localInputToUtcMs(document.getElementById('from').value, document.getElementById('timezone').value),
+      endTime: localInputToUtcMs(document.getElementById('to').value, document.getElementById('timezone').value),
       limit: Number(document.getElementById('limit').value || 100),
       cameraIds: cameraSel,
       eventTypes
@@ -483,7 +531,8 @@ search.onclick = async () => {
     const tbody = document.getElementById('rows');
     tbody.innerHTML='';
 
-    for(const ev of lastEvents){
+    for(let i=0; i<lastEvents.length; i++){
+      const ev = lastEvents[i];
       const tr = document.createElement('tr');
       const tags = [ev.type, ...(ev.smartDetectTypes||[])].filter(Boolean)
         .map(t=>`<span class="pill">${t}</span>`).join(' ');
@@ -495,9 +544,11 @@ search.onclick = async () => {
       const img = `<img loading="lazy" src="/api/event-thumbnail-proxy?d=${eventReq}" onerror="this.onerror=null;this.src='/api/snapshot-proxy?d=${snapReq}'"/>`;
 
       const camName = lastCameraMap[ev.camera] || ev.camera || '-';
-      tr.innerHTML = `<td>${fmtTime(ev.start)}</td><td>${camName}</td><td>${tags||'-'}</td><td>${ev.score ?? '-'}</td><td>${img}</td>`;
+      tr.innerHTML = `<td><input type="checkbox" class="row-check" data-index="${i}" checked/></td><td>${fmtTime(ev.start)}</td><td>${camName}</td><td>${tags||'-'}</td><td>${ev.score ?? '-'}</td><td>${img}</td>`;
       tbody.appendChild(tr);
     }
+
+    document.getElementById('selectAll').checked = true;
 
     renderDiagnostics(data.diagnostics);
 
@@ -518,11 +569,15 @@ save.onclick = async () => {
     const outputDir = document.getElementById('outputDir').value.trim();
     if(!outputDir){ setStatus('Set output folder first.', 'error'); return; }
 
+    const checked = [...document.querySelectorAll('.row-check:checked')].map(cb => Number(cb.dataset.index));
+    const eventsToSave = checked.map(i => lastEvents[i]);
+    if (!eventsToSave.length) { setStatus('No rows selected. Check at least one row.', 'error'); return; }
+
     setBusy(save, true, 'Saving...');
     const data = await post('/api/save-images', {
       ...creds(),
       outputDir,
-      events: lastEvents,
+      events: eventsToSave,
       useEventThumbnail: document.getElementById('useEventThumbnail').checked
     });
 
@@ -532,6 +587,7 @@ save.onclick = async () => {
   finally { setBusy(save, false); }
 };
 
+populateTimezones();
 initDefaultRange();
 summarizeFilters();
 ['from','to','timezone','limit','camera'].forEach(id=>{

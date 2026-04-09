@@ -12,6 +12,17 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const sessions = new Map();
 
+const SESSION_TTL_MS = 30 * 60 * 1000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of sessions) {
+    if (now - entry.lastLogin > SESSION_TTL_MS) {
+      log('[session] evicting stale entry', key);
+      sessions.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
 function log(...args) {
   console.log(new Date().toISOString(), '-', ...args);
 }
@@ -51,6 +62,7 @@ async function getSession({ host, username, password, force = false }) {
 
 function toUnixMillis(input) {
   if (!input) return null;
+  if (typeof input === 'number') return input;
   const d = new Date(input);
   if (Number.isNaN(d.getTime())) return null;
   return d.getTime();
